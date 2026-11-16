@@ -1,0 +1,193 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Core Primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    function incoming() {
+      return request.resource.data;
+    }
+    function existing() {
+      return resource.data;
+    }
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+    function userDocExists(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId)) ||
+        existsAfter(/databases/$(database)/documents/users/$(userId));
+    }
+
+    // Validation Helpers
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'country', 'targetMajor', 'plan', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'country', 'targetMajor', 'plan', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.uid == request.auth.uid
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
+        && data.country is string && data.country.size() >= 2 && data.country.size() <= 80
+        && data.targetMajor is string && data.targetMajor.size() >= 1 && data.targetMajor.size() <= 80
+        && data.plan in ['free', 'premium']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidUserPrivateInfo(data) {
+      return data.keys().hasAll(['uid', 'email', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.uid == request.auth.uid
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 200
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCourseEnrollment(data) {
+      return data.keys().hasAll(['userId', 'courseId', 'majorId', 'instituteId', 'progress', 'completedModules', 'certificateEarned', 'enrolledAt', 'updatedAt'])
+        && data.keys().hasOnly(['userId', 'courseId', 'majorId', 'instituteId', 'progress', 'completedModules', 'quizScore', 'certificateEarned', 'enrolledAt', 'updatedAt'])
+        && isValidId(data.userId)
+        && data.userId == request.auth.uid
+        && isValidId(data.courseId)
+        && data.majorId is string && data.majorId.size() >= 1 && data.majorId.size() <= 80
+        && data.instituteId is string && data.instituteId.size() >= 1 && data.instituteId.size() <= 80
+        && data.progress is number && data.progress >= 0 && data.progress <= 100
+        && data.completedModules is list && data.completedModules.size() <= 30
+        && (data.completedModules.size() == 0 || data.completedModules[0] is string)
+        && (!('quizScore' in data) || (data.quizScore is number && data.quizScore >= 0 && data.quizScore <= 100))
+        && data.certificateEarned is bool
+        && data.enrolledAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidUserResume(data) {
+      return data.keys().hasAll(['userId', 'fullName', 'headline', 'summary', 'targetMajor', 'skills', 'updatedAt'])
+        && data.keys().hasOnly(['userId', 'fullName', 'headline', 'summary', 'targetMajor', 'skills', 'updatedAt'])
+        && isValidId(data.userId)
+        && data.userId == request.auth.uid
+        && data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 120
+        && data.headline is string && data.headline.size() >= 1 && data.headline.size() <= 160
+        && data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 2000
+        && data.targetMajor is string && data.targetMajor.size() >= 1 && data.targetMajor.size() <= 80
+        && data.skills is list && data.skills.size() <= 20
+        && (data.skills.size() == 0 || data.skills[0] is string)
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidBusinessInquiry(data) {
+      return data.keys().hasAll(['userId', 'companyName', 'teamSize', 'majorFocus', 'createdAt'])
+        && data.keys().hasOnly(['userId', 'companyName', 'teamSize', 'majorFocus', 'notes', 'createdAt'])
+        && isValidId(data.userId)
+        && data.userId == request.auth.uid
+        && data.companyName is string && data.companyName.size() >= 2 && data.companyName.size() <= 120
+        && data.teamSize is string && data.teamSize.size() >= 1 && data.teamSize.size() <= 40
+        && data.majorFocus is string && data.majorFocus.size() >= 1 && data.majorFocus.size() <= 80
+        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000))
+        && data.createdAt is timestamp;
+    }
+
+    // Learner Profile
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow create: if isVerified() && isValidId(userId) && isOwner(userId)
+        && isValidUserProfile(incoming())
+        && incoming().uid == userId
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerified() && isValidId(userId) && isOwner(userId)
+        && isValidUserProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'country', 'targetMajor', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['plan', 'updatedAt'])
+        );
+      allow delete: if false;
+
+      // Isolated Private PII
+      match /private/{docId} {
+        allow get: if isValidId(userId) && isValidId(docId) && isOwner(userId);
+        allow create: if isVerified() && isValidId(userId) && isValidId(docId) && isOwner(userId)
+          && isValidUserPrivateInfo(incoming())
+          && incoming().uid == userId
+          && incoming().updatedAt == request.time
+          && userDocExists(userId);
+        allow update: if isVerified() && isValidId(userId) && isValidId(docId) && isOwner(userId)
+          && isValidUserPrivateInfo(incoming())
+          && incoming().uid == existing().uid
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'updatedAt'])
+          && userDocExists(userId);
+        allow delete: if false;
+      }
+
+      // Course Enrollments & Progress
+      match /enrollments/{courseId} {
+        allow get: if isValidId(userId) && isValidId(courseId) && isOwner(userId);
+        allow list: if isValidId(userId) && isOwner(userId) && resource.data.userId == request.auth.uid;
+        allow create: if isVerified() && isValidId(userId) && isValidId(courseId) && isOwner(userId)
+          && isValidCourseEnrollment(incoming())
+          && incoming().userId == userId
+          && incoming().courseId == courseId
+          && incoming().enrolledAt == request.time
+          && incoming().updatedAt == request.time
+          && userDocExists(userId);
+        allow update: if isVerified() && isValidId(userId) && isValidId(courseId) && isOwner(userId)
+          && isValidCourseEnrollment(incoming())
+          && incoming().userId == existing().userId
+          && incoming().courseId == existing().courseId
+          && incoming().majorId == existing().majorId
+          && incoming().instituteId == existing().instituteId
+          && incoming().enrolledAt == existing().enrolledAt
+          && incoming().updatedAt == request.time
+          && userDocExists(userId)
+          && (
+            incoming().diff(existing()).affectedKeys().hasOnly(['progress', 'completedModules', 'updatedAt']) ||
+            incoming().diff(existing()).affectedKeys().hasOnly(['progress', 'completedModules', 'quizScore', 'certificateEarned', 'updatedAt'])
+          );
+        allow delete: if isVerified() && isValidId(userId) && isValidId(courseId) && isOwner(userId);
+      }
+
+      // Career Hub Resumes
+      match /resumes/{resumeId} {
+        allow get: if isValidId(userId) && isValidId(resumeId) && isOwner(userId);
+        allow list: if isValidId(userId) && isOwner(userId) && resource.data.userId == request.auth.uid;
+        allow create: if isVerified() && isValidId(userId) && isValidId(resumeId) && isOwner(userId)
+          && isValidUserResume(incoming())
+          && incoming().userId == userId
+          && incoming().updatedAt == request.time
+          && userDocExists(userId);
+        allow update: if isVerified() && isValidId(userId) && isValidId(resumeId) && isOwner(userId)
+          && isValidUserResume(incoming())
+          && incoming().userId == existing().userId
+          && incoming().updatedAt == request.time
+          && userDocExists(userId)
+          && incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'headline', 'summary', 'targetMajor', 'skills', 'updatedAt']);
+        allow delete: if isVerified() && isValidId(userId) && isValidId(resumeId) && isOwner(userId);
+      }
+    }
+
+    // B2B Team Training Inquiries
+    match /businessInquiries/{inquiryId} {
+      allow get: if isSignedIn() && isValidId(inquiryId) && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isVerified() && isValidId(inquiryId)
+        && isValidBusinessInquiry(incoming())
+        && incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if false;
+    }
+  }
+}

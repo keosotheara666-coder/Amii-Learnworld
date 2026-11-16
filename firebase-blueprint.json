@@ -1,0 +1,218 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Learner account profile and academic major preferences.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "country": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "targetMajor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "plan": {
+          "type": "string",
+          "enum": ["free", "premium"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "displayName", "country", "targetMajor", "plan", "createdAt", "updatedAt"]
+    },
+    "UserPrivateInfo": {
+      "title": "UserPrivateInfo",
+      "description": "Private learner PII including verified email address.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 200
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "updatedAt"]
+    },
+    "CourseEnrollment": {
+      "title": "CourseEnrollment",
+      "description": "Tracks a learner's enrollment, module completion, quiz score, and certificate status.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "courseId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "majorId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "instituteId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "progress": {
+          "type": "number"
+        },
+        "completedModules": {
+          "type": "array"
+        },
+        "quizScore": {
+          "type": "number"
+        },
+        "certificateEarned": {
+          "type": "boolean"
+        },
+        "enrolledAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["userId", "courseId", "majorId", "instituteId", "progress", "completedModules", "certificateEarned", "enrolledAt", "updatedAt"]
+    },
+    "UserResume": {
+      "title": "UserResume",
+      "description": "Learner career resume draft created in the Career Hub.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "fullName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "headline": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "targetMajor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "skills": {
+          "type": "array"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["userId", "fullName", "headline", "summary", "targetMajor", "skills", "updatedAt"]
+    },
+    "BusinessInquiry": {
+      "title": "BusinessInquiry",
+      "description": "Organization training inquiry submitted via For Business page.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "companyName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "teamSize": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "majorFocus": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["userId", "companyName", "teamSize", "majorFocus", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Stores learner profile and selected major branch."
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivateInfo" },
+      "description": "Isolated PII storage for learner email."
+    },
+    "/users/{userId}/enrollments/{courseId}": {
+      "schema": { "$ref": "#/entities/CourseEnrollment" },
+      "description": "Learner course progress, module completion, and earned certificates."
+    },
+    "/users/{userId}/resumes/{resumeId}": {
+      "schema": { "$ref": "#/entities/UserResume" },
+      "description": "Saved learner resume from the Career Hub."
+    },
+    "/businessInquiries/{inquiryId}": {
+      "schema": { "$ref": "#/entities/BusinessInquiry" },
+      "description": "Enterprise training requests submitted by authenticated users."
+    }
+  }
+}
